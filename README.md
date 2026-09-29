@@ -1,3 +1,41 @@
+# 架构取舍（先读这段）
+
+本版本选择的方案是 **外链样式表 + ES 模块三层结构**（`css/app.css` + `js/metrics.js`、`js/render.js`、`js/bindings.js`，入口 `js/main.js`）：
+
+- **代价（必须接受）**：页面只能通过 **http 服务**打开。请用 `npx http-server -p 8080 -c-1`（或 `npm start`）后访问 `http://localhost:8080/`；直接双击 `index.html` 走 `file://` 协议时，ES 模块会被浏览器按跨域（CORS）拦截，表现为整页白屏、控制台报模块加载失败。
+- **被放弃的替代方案**：改回内联 `<style>` + 内联 IIFE、主题只靠 CSS 变量，则可以离线双击打开、零服务依赖；但三层会重新挤回一个文件，丢掉 ES 模块的复用边界，`metrics` 纯函数也无法被 `node --test` 直接引用——即牺牲可测性换离线便利。
+
+本仓库选了可测性与分层，**离线双击打开不在支持范围内**。
+
+## 目录与分层
+
+- `index.html`：只剩结构骨架（导航、档位切换容器、量表挂载点、tooltip 容器）。
+- `css/app.css`：全部样式，档位颜色等主题值走 CSS 变量。
+- `js/metrics.js`：指标算法层，只有纯函数（`classifyPercent` / `isInvalidPercent` 等），不碰 DOM。
+- `js/render.js`：绘制层，只管 DOM 与两张 SVG（路径与动画模板固定，只注入数据）。
+- `js/bindings.js`：绑定层，集中处理 hover / focus / touch 三路事件与 tooltip；每次绑定返回 `destroy()`，**重渲染前先解绑旧监听**，避免切档位后回调层层叠加。
+- `js/main.js`：入口，只持有指标数据、阈值档位配置与装配顺序。
+- `test/metrics.test.js`：指标边界用例，`node --test` 运行。
+
+## 运行与验证
+
+```sh
+node --test                       # 指标纯函数边界用例
+npx http-server -p 8080 -c-1      # 起 http 服务（勿直接双击 file://）
+```
+
+浏览器中逐项核对：保守 / 标准 / 冲刺三个阈值档位下两张量表的分档、tooltip（鼠标悬停、键盘 focus、触摸）与弧/指针动画。
+
+## 数值边界语义（已被测试钉死，禁止漂移）
+
+- `0` → **冷档**，量程 0、文案 `0%`，不会落进无效档。
+- `> 100`（如 `107.4%`）→ **溢出档**；分档独立，但绘制量程钳到 100，文案保留原始值。
+- `100` → 仍是**热档**（上边界包含），不算溢出。
+- `NaN` / `Infinity` / 负数 / 非数字 → **无效档**，无弧长、无指针、文案 `—`。
+- 阈值采用左闭：标准档下 `60` 进温档、`85` 进热档；切档位只改阈值配置，不改算法。
+
+---
+
 ![preview](https://raw.githubusercontent.com/Zayfern/artisanal-streamlit-brew-metrics/main/preview.svg)
 
 # 🌌 Nebula Cafe — Predictive Footfall & Inventory Harmony System
