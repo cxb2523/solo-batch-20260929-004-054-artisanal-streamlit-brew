@@ -1,3 +1,27 @@
+# 架构取舍（必读）
+
+本次把 `index.html` 里内联的 `<style>` 与 `<script>` 抽成了 `css/app.css` 与 `js/` 下的 ES 模块三层：
+
+- `js/metrics.js` — 指标算法，只有纯函数，可直接被 Node 单测引用；
+- `js/render.js` — 量表绘制，只管 DOM 与 SVG（路径固定、动画 900ms ease-out-cubic）；
+- `js/bindings.js` — 事件绑定独立成层，hover / focus / touch 合并到同一 tooltip；
+- `js/main.js` + `index.html` — 入口只剩结构骨架与装配代码。
+
+**这个选择的代价：页面必须经 HTTP 服务打开。** 外链 CSS 配合 `<script type="module">` 受浏览器同源策略约束，直接双击 `index.html`（`file://` 协议）时 ES 模块会被 CORS 拦截，页面只剩白底结构（样式外链本身多数浏览器可用，但模块脚本必然失败）。请用：
+
+```bash
+npx http-server . -p 8080 -c-1
+# 或 npm run serve，然后访问 http://localhost:8080
+```
+
+**反过来的取舍也明确记下**：若要双击离线打开，就得退回内联 IIFE（全局命名空间）+ CSS 变量写在 `<style>` 里的单文件方案；那样没有跨域问题，却丢掉 ES 模块的显式依赖、跨页复用能力和 `node --test` 直接导入指标函数的可测性。本仓库选择可测性与可维护性，接受“必须起本地服务”这个约束。
+
+**边界口径**（`node --test` 锁定，见 `test/metrics.test.js`）：`NaN`/非数值 → `invalid`（弧线停 0、读数 “—”）；`<=0` → `empty`；`(0,60)` → `cold`；`[60,85)` → `warm`；`[85,100]` → `hot`；`>100`（含 `Infinity`）→ `over`（读数保留真实值，弧线封顶 100%）。
+
+**事件解绑约定**：切换档位（今日/本周/本月）会触发重渲染，`bindings.js` 返回的 `dispose()` 通过 `AbortController` 在旧 DOM 清空前摘掉全部监听；不先解绑会导致回调层层叠加，tooltip 被旧卡片反复触发。
+
+---
+
 ![preview](https://raw.githubusercontent.com/Zayfern/artisanal-streamlit-brew-metrics/main/preview.svg)
 
 # 🌌 Nebula Cafe — Predictive Footfall & Inventory Harmony System
